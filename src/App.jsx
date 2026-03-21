@@ -15,15 +15,36 @@ const INITIAL_GAMES = [
 const ADMIN_EMAIL = 'oliversamuelbond@icloud.com';
 
 // --- CLOUD DATABASE SETUP ---
-const firebaseConfigStr = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
+let configSource = null;
+let appId = 'game-rater-prod';
+
+try {
+  if (typeof __firebase_config !== 'undefined') {
+    configSource = __firebase_config;
+  } else if (typeof import.meta !== 'undefined') {
+    configSource = import.meta.env.VITE_FIREBASE_CONFIG;
+  }
+} catch (e) {}
+
+try {
+  if (typeof __app_id !== 'undefined') {
+    appId = __app_id;
+  } else if (typeof import.meta !== 'undefined') {
+    appId = import.meta.env.VITE_APP_ID || 'game-rater-prod';
+  }
+} catch (e) {}
+
 let app, auth, db;
-if (firebaseConfigStr) {
-  const firebaseConfig = JSON.parse(firebaseConfigStr);
-  app = initializeApp(firebaseConfig);
-  auth = getAuth(app);
-  db = getFirestore(app);
+if (configSource) {
+  try {
+    const firebaseConfig = typeof configSource === 'string' ? JSON.parse(configSource) : configSource;
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+  } catch (e) {
+    console.error("Firebase init error:", e);
+  }
 }
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
 export default function App() {
   const [firebaseUser, setFirebaseUser] = useState(null);
