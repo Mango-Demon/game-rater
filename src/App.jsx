@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, Gamepad2, CheckCircle2, ShieldAlert, Plus, Trash2 } from 'lucide-react';
+import { LogOut, Gamepad2, CheckCircle2, ShieldAlert, Plus, Trash2, Search } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
@@ -37,6 +37,7 @@ export default function App() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [pendingAdmin, setPendingAdmin] = useState(false);
   const [adminCode, setAdminCode] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Admin Tool State
   const [newGameTitle, setNewGameTitle] = useState('');
@@ -260,8 +261,27 @@ export default function App() {
 
         {activeTab === 'results' && (
           <div className="space-y-4">
-            <h2 className="text-2xl font-bold mb-4">Community Standings</h2>
-            {games.map(g => {
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <h2 className="text-2xl font-bold">Community Standings</h2>
+              <div className="relative w-full sm:w-64">
+                <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input 
+                  type="text" 
+                  placeholder="Search games..." 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 bg-slate-800 rounded-lg border border-slate-700 text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+              </div>
+            </div>
+
+            {games.filter(g => g.title.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
+              <p className="text-slate-500 italic text-center py-8">No games found matching "{searchQuery}"...</p>
+            )}
+
+            {games
+              .filter(g => g.title.toLowerCase().includes(searchQuery.toLowerCase()))
+              .map(g => {
               const reviews = Object.values(g.ratings);
               const avg = reviews.length > 0 
                 ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1)
