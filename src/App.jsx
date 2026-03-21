@@ -1,0 +1,324 @@
+import React, { useState, useEffect } from 'react';
+import { LogOut, Gamepad2, CheckCircle2, ShieldAlert, Plus, Trash2 } from 'lucide-react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+
+// Initial list of games to use if the app is brand new
+const INITIAL_GAMES = [
+  { id: "1", title: 'The Legend of Zelda: Breath of the Wild', genre: 'Action-Adventure', ratings: {} },
+  { id: "2", title: 'Minecraft', genre: 'Sandbox', ratings: {} },
+  { id: "3", title: 'Hades', genre: 'Roguelike', ratings: {} },
+  { id: "4", title: 'Stardew Valley', genre: 'Simulation', ratings: {} }
+];
+
+const ADMIN_EMAIL = 'oliversamuelbond@icloud.com';
+
+// --- CLOUD DATABASE SETUP ---
+const firebaseConfigStr = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
+let app, auth, db;
+if (firebaseConfigStr) {
+  const firebaseConfig = JSON.parse(firebaseConfigStr);
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db = getFirestore(app);
+}
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+export default function App() {
+  const [firebaseUser, setFirebaseUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [emailInput, setEmailInput] = useState('');
+  const [games, setGames] = useState([]);
+  const [activeTab, setActiveTab] = useState('form');
+  const [selectedGameId, setSelectedGameId] = useState('');
+  const [ratingValue, setRatingValue] = useState(null);
+  const [comment, setComment] = useState('');
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [pendingAdmin, setPendingAdmin] = useState(false);
+  const [adminCode, setAdminCode] = useState('');
+
+  // Admin Tool State
+  const [newGameTitle, setNewGameTitle] = useState('');
+  const [newGameGenre, setNewGameGenre] = useState('');
+
+  const isAdmin = currentUser === ADMIN_EMAIL;
+
+  // 1. Connect to Auth
+  useEffect(() => {
+    if (!auth) return;
+    const initAuth = async () => {
+      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+        await signInWithCustomToken(auth, __initial_auth_token);
+      } else {
+        await signInAnonymously(auth);
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, setFirebaseUser);
+    return () => unsubscribe();
+  }, []);
+
+  // 2. Load data from Cloud Database (or fall back to computer memory)
+  useEffect(() => {
+    if (db && firebaseUser) {
+      const gamesRef = collection(db, 'artifacts', appId, 'public', 'data', 'games');
+      const unsubscribe = onSnapshot(gamesRef, (snapshot) => {
+        if (snapshot.empty) {
+           INITIAL_GAMES.forEach(g => setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', g.id), g));
+        } else {
+           const data = snapshot.docs.map(d => d.data());
+           data.sort((a, b) => parseInt(a.id) - parseInt(b.id));
+           setGames(data);
+        }
+      }, (err) => console.error(err));
+      return () => unsubscribe();
+    } else {
+      const saved = localStorage.getItem('gamerater_v3_data');
+      if (saved) setGames(JSON.parse(saved));
+      else setGames(INITIAL_GAMES);
+    }
+  }, [firebaseUser]);
+
+  // Save data locally just in case we are offline
+  useEffect(() => {
+    if (!db && games.length > 0) {
+      localStorage.setItem('gamerater_v3_data', JSON.stringify(games));
+    }
+  }, [games]);
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+    const email = emailInput.trim().toLowerCase();
+    if (email === ADMIN_EMAIL.toLowerCase()) {
+      setPendingAdmin(true);
+    } else if (email) {
+      setCurrentUser(email);
+      setActiveTab('form');
+    }
+  };
+
+  const handleVerifyAdmin = (e) => {
+    e.preventDefault();
+    if (adminCode === 'RedBlackGoldenTimes32') {
+      setCurrentUser(ADMIN_EMAIL);
+      setPendingAdmin(false);
+      setActiveTab('form');
+    }
+  };
+
+  const handleSubmitRating = async (e) => {
+    e.preventDefault();
+    if (!selectedGameId || !ratingValue) return;
+
+    const game = games.find(g => g.id.toString() === selectedGameId.toString());
+    if (!game) return;
+
+    const updatedGame = {
+      ...game,
+      ratings: {
+        ...game.ratings,
+        [currentUser]: { rating: ratingValue, comment, date: new Date().toISOString() }
+      }
+    };
+
+    if (db && firebaseUser) {
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', selectedGameId.toString()), updatedGame);
+    } else {
+      setGames(games.map(g => g.id.toString() === selectedGameId.toString() ? updatedGame : g));
+    }
+
+    setShowSuccess(true);
+    setSelectedGameId('');
+    setRatingValue(null);
+    setComment('');
+    setTimeout(() => setShowSuccess(false), 3000);
+  };
+
+  const handleAddGame = async (e) => {
+    e.preventDefault();
+    if (!newGameTitle.trim()) return;
+    
+    const newGame = {
+      id: Date.now().toString(),
+      title: newGameTitle,
+      genre: newGameGenre || 'General',
+      ratings: {}
+    };
+    
+    if (db && firebaseUser) {
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', newGame.id), newGame);
+    } else {
+      setGames([...games, newGame]);
+    }
+    setNewGameTitle('');
+    setNewGameGenre('');
+  };
+
+  const handleDeleteGame = async (id) => {
+    if (db && firebaseUser) {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', id.toString()));
+    } else {
+      setGames(games.filter(g => g.id !== id));
+    }
+  };
+
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <div className="bg-slate-800 p-8 rounded-2xl shadow-xl w-full max-w-md border border-slate-700">
+          <div className="flex justify-center mb-4"><Gamepad2 className="w-12 h-12 text-indigo-400" /></div>
+          <h1 className="text-3xl font-bold text-center text-white mb-6">GameRater</h1>
+          {!pendingAdmin ? (
+            <form onSubmit={handleLogin} className="space-y-4">
+              <input
+                type="email" required placeholder="Enter your email" value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
+                className="w-full px-4 py-3 rounded-lg bg-slate-900 border border-slate-700 text-white"
+              />
+              <button type="submit" className="w-full bg-indigo-600 text-white py-3 rounded-lg font-bold">Sign In</button>
+            </form>
+          ) : (
+            <form onSubmit={handleVerifyAdmin} className="space-y-4">
+              <input
+                type="password" placeholder="Admin Secret Code" value={adminCode}
+                onChange={(e) => setAdminCode(e.target.value)}
+                className="w-full px-4 py-3 rounded-lg bg-slate-900 border border-slate-700 text-white"
+              />
+              <button type="submit" className="w-full bg-amber-600 text-white py-3 rounded-lg font-bold">Verify Admin</button>
+              <button type="button" onClick={() => setPendingAdmin(false)} className="w-full text-slate-400 text-sm">Cancel</button>
+            </form>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-900 text-slate-200">
+      <nav className="bg-slate-800 border-b border-slate-700 p-4 flex justify-between items-center sticky top-0 z-10">
+        <div className="flex gap-2 sm:gap-4">
+          <button onClick={() => setActiveTab('form')} className={`px-3 py-2 rounded text-sm sm:text-base ${activeTab === 'form' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}>Rate</button>
+          <button onClick={() => setActiveTab('results')} className={`px-3 py-2 rounded text-sm sm:text-base ${activeTab === 'results' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}>Results</button>
+          {isAdmin && (
+            <button onClick={() => setActiveTab('admin')} className={`px-3 py-2 rounded text-sm sm:text-base flex items-center gap-1 ${activeTab === 'admin' ? 'bg-amber-600 text-white' : 'text-amber-500/60'}`}>
+              <ShieldAlert className="w-4 h-4" /> Admin
+            </button>
+          )}
+        </div>
+        <button onClick={() => setCurrentUser(null)} className="text-slate-400"><LogOut /></button>
+      </nav>
+
+      <div className="max-w-2xl mx-auto mt-8 px-4 pb-20">
+        {showSuccess && (
+          <div className="bg-emerald-600/20 border border-emerald-500 text-emerald-400 p-4 rounded-lg mb-6 flex items-center gap-2">
+            <CheckCircle2 className="w-5 h-5" /> Rating submitted!
+          </div>
+        )}
+
+        {activeTab === 'form' && (
+          <form onSubmit={handleSubmitRating} className="space-y-6">
+            <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
+              <label className="block mb-3 font-bold text-lg">1. Choose a Game</label>
+              <select 
+                required value={selectedGameId} onChange={(e) => setSelectedGameId(e.target.value)}
+                className="w-full p-3 bg-slate-900 rounded-lg border border-slate-600 text-white"
+              >
+                <option value="">Select...</option>
+                {games.map(g => <option key={g.id} value={g.id}>{g.title}</option>)}
+              </select>
+            </div>
+
+            <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
+              <label className="block mb-4 font-bold text-lg">2. Score (1-19)</label>
+              <div className="flex flex-wrap gap-2">
+                {Array.from({length: 19}, (_, i) => i + 1).map(n => (
+                  <button 
+                    key={n} type="button" onClick={() => setRatingValue(n)}
+                    className={`w-10 h-10 rounded-full border transition-all ${ratingValue === n ? 'bg-indigo-600 border-white scale-110' : 'bg-slate-900 border-slate-600'}`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
+              <label className="block mb-3 font-bold text-lg">3. Comments (Optional)</label>
+              <textarea 
+                value={comment} onChange={(e) => setComment(e.target.value)}
+                className="w-full p-3 bg-slate-900 rounded-lg border border-slate-600 text-white h-24"
+                placeholder="What did you think?"
+              />
+            </div>
+
+            <button type="submit" disabled={!selectedGameId || !ratingValue} className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 p-4 rounded-xl font-bold text-xl transition-colors">
+              Submit Review
+            </button>
+          </form>
+        )}
+
+        {activeTab === 'results' && (
+          <div className="space-y-4">
+            <h2 className="text-2xl font-bold mb-4">Community Standings</h2>
+            {games.map(g => {
+              const reviews = Object.values(g.ratings);
+              const avg = reviews.length > 0 
+                ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1)
+                : "N/A";
+              return (
+                <div key={g.id} className="bg-slate-800 p-5 rounded-xl border border-slate-700 flex justify-between items-center">
+                  <div>
+                    <h3 className="font-bold text-xl">{g.title}</h3>
+                    <p className="text-indigo-400 text-sm">{g.genre}</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-black text-white">{avg}</div>
+                    <div className="text-xs text-slate-500">{reviews.length} reviews</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {activeTab === 'admin' && isAdmin && (
+          <div className="space-y-6">
+            <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
+              <h3 className="font-bold text-xl mb-4">Add New Game</h3>
+              <form onSubmit={handleAddGame} className="space-y-4">
+                <input 
+                  type="text" placeholder="Game Title" value={newGameTitle} 
+                  onChange={(e) => setNewGameTitle(e.target.value)}
+                  className="w-full p-3 bg-slate-900 rounded-lg border border-slate-600"
+                />
+                <input 
+                  type="text" placeholder="Genre" value={newGameGenre} 
+                  onChange={(e) => setNewGameGenre(e.target.value)}
+                  className="w-full p-3 bg-slate-900 rounded-lg border border-slate-600"
+                />
+                <button type="submit" className="w-full bg-indigo-600 p-3 rounded-lg font-bold flex items-center justify-center gap-2">
+                  <Plus className="w-5 h-5" /> Add Game to List
+                </button>
+              </form>
+            </div>
+
+            <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+              <h3 className="font-bold p-4 border-b border-slate-700 bg-slate-900/50">Manage Games</h3>
+              <div className="divide-y divide-slate-700">
+                {games.map(g => (
+                  <div key={g.id} className="p-4 flex justify-between items-center">
+                    <span>{g.title}</span>
+                    <button onClick={() => handleDeleteGame(g.id)} className="text-red-400 p-2 hover:bg-red-400/10 rounded">
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
