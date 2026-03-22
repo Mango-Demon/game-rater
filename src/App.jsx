@@ -15,35 +15,33 @@ const INITIAL_GAMES = [
 const ADMIN_EMAIL = 'oliversamuelbond@icloud.com';
 
 // --- CLOUD DATABASE SETUP ---
-let configSource = null;
 let appId = 'game-rater-prod';
+let firebaseConfig = null;
 
-try {
-  if (typeof __firebase_config !== 'undefined') {
-    configSource = __firebase_config;
-  } else if (typeof import.meta !== 'undefined') {
-    configSource = import.meta.env.VITE_FIREBASE_CONFIG;
-  }
-} catch (e) {}
-
-try {
-  if (typeof __app_id !== 'undefined') {
-    appId = __app_id;
-  } else if (typeof import.meta !== 'undefined') {
-    appId = import.meta.env.VITE_APP_ID || 'game-rater-prod';
-  }
-} catch (e) {}
+// Smart Database Switcher
+if (typeof __firebase_config !== 'undefined') {
+  // 1. If we are in the testing Sandbox, safely use the sandbox database
+  firebaseConfig = typeof __firebase_config === 'string' ? JSON.parse(__firebase_config) : __firebase_config;
+  if (typeof __app_id !== 'undefined') appId = __app_id;
+} else {
+  // 2. If we are live on Vercel (or your computer), use YOUR real database!
+  firebaseConfig = {
+    apiKey: "AIzaSyB8r7loWotSyr1F3Ps2iAwrWYjBwbLPOUo",
+    authDomain: "gamerater-e908a.firebaseapp.com",
+    projectId: "gamerater-e908a",
+    storageBucket: "gamerater-e908a.firebasestorage.app",
+    messagingSenderId: "791914210637",
+    appId: "1:791914210637:web:342c58be7a4e94470dc304"
+  };
+}
 
 let app, auth, db;
-if (configSource) {
-  try {
-    const firebaseConfig = typeof configSource === 'string' ? JSON.parse(configSource) : configSource;
-    app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    db = getFirestore(app);
-  } catch (e) {
-    console.error("Firebase init error:", e);
-  }
+try {
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db = getFirestore(app);
+} catch (e) {
+  console.error("Firebase init error:", e);
 }
 
 export default function App() {
@@ -59,6 +57,7 @@ export default function App() {
   const [pendingAdmin, setPendingAdmin] = useState(false);
   const [adminCode, setAdminCode] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isCloudConnected, setIsCloudConnected] = useState(false);
 
   // Admin Tool State
   const [newGameTitle, setNewGameTitle] = useState('');
@@ -86,6 +85,7 @@ export default function App() {
     if (db && firebaseUser) {
       const gamesRef = collection(db, 'artifacts', appId, 'public', 'data', 'games');
       const unsubscribe = onSnapshot(gamesRef, (snapshot) => {
+        setIsCloudConnected(true);
         if (snapshot.empty) {
            INITIAL_GAMES.forEach(g => setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', g.id), g));
         } else {
@@ -93,9 +93,13 @@ export default function App() {
            data.sort((a, b) => parseInt(a.id) - parseInt(b.id));
            setGames(data);
         }
-      }, (err) => console.error(err));
+      }, (err) => {
+        console.error(err);
+        setIsCloudConnected(false);
+      });
       return () => unsubscribe();
     } else {
+      setIsCloudConnected(false);
       const saved = localStorage.getItem('gamerater_v3_data');
       if (saved) setGames(JSON.parse(saved));
       else setGames(INITIAL_GAMES);
@@ -228,10 +232,24 @@ export default function App() {
             </button>
           )}
         </div>
-        <button onClick={() => setCurrentUser(null)} className="text-slate-400"><LogOut /></button>
+        <div className="flex items-center gap-4">
+          <div className="hidden sm:flex items-center text-xs font-bold">
+            {isCloudConnected ? (
+              <span className="text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded">🟢 Live Cloud</span>
+            ) : (
+              <span className="text-red-400 bg-red-400/10 px-2 py-1 rounded">🔴 Offline Mode</span>
+            )}
+          </div>
+          <button onClick={() => setCurrentUser(null)} className="text-slate-400"><LogOut /></button>
+        </div>
       </nav>
 
       <div className="max-w-2xl mx-auto mt-8 px-4 pb-20">
+        {!isCloudConnected && (
+          <div className="bg-red-900/40 border border-red-500/50 text-red-200 p-3 rounded-lg mb-6 text-sm text-center">
+            <strong>Warning:</strong> The cloud database is disconnected. Ratings are only saving on this computer!
+          </div>
+        )}
         {showSuccess && (
           <div className="bg-emerald-600/20 border border-emerald-500 text-emerald-400 p-4 rounded-lg mb-6 flex items-center gap-2">
             <CheckCircle2 className="w-5 h-5" /> Rating submitted!
