@@ -26,7 +26,7 @@ if (typeof __firebase_config !== 'undefined') {
 } else {
   // 2. If we are live on Vercel (or your computer), use YOUR real database!
   firebaseConfig = {
-    apiKey: "AIzaSyB8r7loWotSyr1F3Ps2iAwrWYjBwbLPOUo",
+    apiKey: "AIzaSyB8r7loWotSyr1F3Ps2iAwrWYjBwbLPOMo",
     authDomain: "gamerater-e908a.firebaseapp.com",
     projectId: "gamerater-e908a",
     storageBucket: "gamerater-e908a.firebasestorage.app",
