@@ -361,7 +361,7 @@ export default function App() {
                           .map(([userEmail, reviewData]) => (
                           <div key={userEmail} className="bg-slate-800 p-4 rounded-lg border border-slate-700/50">
                             <div className="flex justify-between items-start mb-2">
-                              <span className="font-bold text-indigo-300">@{userEmail.split('@')[0]}</span>
+                              <span className="font-bold text-slate-400">Anonymous</span>
                               <span className="bg-indigo-600/20 text-indigo-300 px-2 py-1 rounded text-xs font-bold border border-indigo-500/30">
                                 Score: {reviewData.rating}/19
                               </span>
