@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, Gamepad2, CheckCircle2, ShieldAlert, Plus, Trash2, Search } from 'lucide-react';
+import { LogOut, Gamepad2, CheckCircle2, ShieldAlert, Plus, Trash2, Search, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
@@ -58,6 +58,7 @@ export default function App() {
   const [adminCode, setAdminCode] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [isCloudConnected, setIsCloudConnected] = useState(false);
+  const [expandedGameId, setExpandedGameId] = useState(null);
 
   // Admin Tool State
   const [newGameTitle, setNewGameTitle] = useState('');
@@ -325,16 +326,61 @@ export default function App() {
               const avg = reviews.length > 0 
                 ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1)
                 : "N/A";
+              
+              const isExpanded = expandedGameId === g.id;
+
               return (
-                <div key={g.id} className="bg-slate-800 p-5 rounded-xl border border-slate-700 flex justify-between items-center">
-                  <div>
-                    <h3 className="font-bold text-xl">{g.title}</h3>
-                    <p className="text-indigo-400 text-sm">{g.genre}</p>
+                <div key={g.id} className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden transition-all shadow-sm">
+                  <div 
+                    onClick={() => setExpandedGameId(isExpanded ? null : g.id)}
+                    className="p-5 flex justify-between items-center cursor-pointer hover:bg-slate-700/50 transition-colors"
+                  >
+                    <div className="flex-1">
+                      <h3 className="font-bold text-xl">{g.title}</h3>
+                      <p className="text-indigo-400 text-sm">{g.genre}</p>
+                    </div>
+                    <div className="text-right flex items-center gap-4">
+                      <div>
+                        <div className="text-2xl font-black text-white">{avg}</div>
+                        <div className="text-xs text-slate-500">{reviews.length} reviews</div>
+                      </div>
+                      {isExpanded ? <ChevronUp className="text-slate-400 w-6 h-6" /> : <ChevronDown className="text-slate-400 w-6 h-6" />}
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-2xl font-black text-white">{avg}</div>
-                    <div className="text-xs text-slate-500">{reviews.length} reviews</div>
-                  </div>
+                  
+                  {isExpanded && (
+                    <div className="bg-slate-900/80 p-5 border-t border-slate-700 space-y-3">
+                      <h4 className="font-bold text-sm text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <MessageSquare className="w-4 h-4" /> Player Reviews
+                      </h4>
+                      {reviews.length === 0 ? (
+                        <p className="text-slate-500 italic text-sm">No written reviews yet. Be the first!</p>
+                      ) : (
+                        Object.entries(g.ratings)
+                          .sort(([,a], [,b]) => new Date(b.date || 0) - new Date(a.date || 0))
+                          .map(([userEmail, reviewData]) => (
+                          <div key={userEmail} className="bg-slate-800 p-4 rounded-lg border border-slate-700/50">
+                            <div className="flex justify-between items-start mb-2">
+                              <span className="font-bold text-indigo-300">@{userEmail.split('@')[0]}</span>
+                              <span className="bg-indigo-600/20 text-indigo-300 px-2 py-1 rounded text-xs font-bold border border-indigo-500/30">
+                                Score: {reviewData.rating}/19
+                              </span>
+                            </div>
+                            {reviewData.comment ? (
+                              <p className="text-slate-200 text-sm mt-2 leading-relaxed">"{reviewData.comment}"</p>
+                            ) : (
+                              <p className="text-slate-500 text-sm mt-2 italic">No written comment.</p>
+                            )}
+                            {reviewData.date && (
+                              <div className="text-slate-500 text-xs mt-3 pt-2 border-t border-slate-700/50">
+                                {new Date(reviewData.date).toLocaleDateString()}
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
